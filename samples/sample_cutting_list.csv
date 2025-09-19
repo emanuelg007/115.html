@@ -1,0 +1,11 @@
+Name,Length,Width,Quantity,Material,Can Rotate (0 = No / 1 = Yes / 2 = Same As Material),Edging Length 1,Edging Length 2,Edging Width 1,Edging Width 2,Note 1,Note 2
+Cabinet Door,600,400,4,18mm MDF,1,PVC White,PVC White,PVC White,PVC White,Handle holes required,Soft close hinges
+Shelf,580,300,6,18mm MDF,1,PVC White,PVC White,,,,Standard shelf
+Back Panel,584,800,2,6mm MDF,0,,,,,Pre-drill for screws,
+Drawer Front,500,150,3,18mm MDF,1,PVC White,PVC White,PVC White,PVC White,Drawer slides,Soft close
+Side Panel,300,800,4,18mm MDF,0,PVC White,,PVC White,PVC White,Pre-drill,Router groove
+Bottom Panel,582,298,2,18mm MDF,1,,,,,Level adjustment,
+Top Panel,600,320,1,18mm MDF,1,PVC White,PVC White,PVC White,PVC White,Countertop support,Heavy duty
+Divider,298,600,2,18mm MDF,0,PVC White,PVC White,,,Adjustable position,
+Face Frame Rail,550,80,4,Solid Oak,0,,,,,Mortise and tenon,Sand 220 grit
+Face Frame Stile,80,750,2,Solid Oak,0,,,,,Mortise and tenon,Sand 220 grit

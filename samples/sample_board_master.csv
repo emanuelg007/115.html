@@ -1,0 +1,5 @@
+Material,board length  ,board width  ,Thickness,CanRotate,Kerf,Grain Direction
+18mm MDF,2440,1220,18,1,3,Any
+6mm MDF,2440,1220,6,1,3,Any
+Solid Oak,2400,200,25,0,3,Length
+Plywood,2440,1220,18,1,3,Cross-grain
