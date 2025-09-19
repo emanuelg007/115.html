@@ -1306,10 +1306,10 @@
     let completedPages = {};
     let currentBoards = [];
     let currentGroups = {};
-    let currentSheets = {};
-    let currentSheetPage = [];
+  let currentSheets = {};
+  let currentSheetPage = {};
     let originalParts = [];
-    let partPlacementMap = [];
+  let partPlacementMap = {};
     let boardSizes = {};
     let masterBoardDB = {};
     
@@ -2003,6 +2003,11 @@
       document.getElementById('exportPdfBtn').style.display = 'inline-block';
       document.getElementById('saveProjectBtn').style.display = 'inline-block';
       document.getElementById('testPrintBtn').style.display = 'inline-block';
+      const printAllBtn = document.getElementById('printAllBtn');
+      if (printAllBtn && !printAllBtn._wired) {
+        printAllBtn.addEventListener('click', window.printAllSheets);
+        printAllBtn._wired = true;
+      }
     }
 
     function resetZoom() { 
@@ -2448,7 +2453,7 @@
       };
     };
 
-    function printBrowserLabel(comp, material, length, width, el1, el2, ew1, ew2, svg) {
+  function printBrowserLabel(comp, material, length, width, el1, el2, ew1, ew2, svg) {
       // Create temporary print element
       const printDiv = document.createElement('div');
       printDiv.style.cssText = `
@@ -2467,8 +2472,14 @@
         <div style="font-size: 14px; margin-bottom: 6px;"><strong>${length} × ${width} mm</strong></div>
         <div style="font-size: 12px; margin-bottom: 4px;">${escapeHtml(material)}</div>
         <div style="font-size: 11px;">
-          ${el1 || el2 || ew1 || ew2 ? `Edge: L1:${el1} L2:${el2} W1:${ew1} W2:${ew2}` : 'No edging'}
+          ${el1 || el2 || ew1 || ew2 ? `Edge: L1:${escapeHtml(el1||'')} L2:${escapeHtml(el2||'')} W1:${escapeHtml(ew1||'')} W2:${escapeHtml(ew2||'')}` : 'No edging'}
         </div>
+        ${(comp["Notes 1"] || comp["Notes 2"]) ? `
+          <div style="font-size: 11px; margin-top: 6px;">
+            ${comp["Notes 1"] ? `<div><strong>Note 1:</strong> ${escapeHtml(comp["Notes 1"])}</div>` : ''}
+            ${comp["Notes 2"] ? `<div><strong>Note 2:</strong> ${escapeHtml(comp["Notes 2"])}</div>` : ''}
+          </div>
+        ` : ''}
       `;
       
       document.body.appendChild(printDiv);
@@ -2504,7 +2515,7 @@
       });
     }
 
-     function markPartAsPrinted(boardKey, pageIdx, pi) {
+  function markPartAsPrinted(boardKey, pageIdx, pi) {
       let partKey = `${boardKey}_${pageIdx}_${pi}`;
       printedParts[partKey] = true;
       
@@ -2527,13 +2538,13 @@
       }
       
       window.hidePopup();
-    }
-      
-      // Refresh the current view
-      let currentTabIndex = Array.from(document.querySelectorAll('.tab')).findIndex(t => t.classList.contains('selected'));
+      // Refresh the current view to reflect updated styles and status indicators
+      const currentTabIndex = Array.from(document.querySelectorAll('.tab')).findIndex(t => t.classList.contains('selected'));
       if (currentTabIndex >= 0) {
         window.selectTab(currentTabIndex);
       }
+    }
+      
     
 
     // Navigation Functions
@@ -2992,7 +3003,8 @@
 
     // Export to PDF function
     document.getElementById('exportPdfBtn').onclick = function() {
-      if (typeof window.jsPDF === 'undefined') {
+      // jsPDF UMD exposes window.jspdf.jsPDF
+      if (!window.jspdf || !window.jspdf.jsPDF) {
         showNotification('PDF library not loaded', 'error');
         return;
       }
@@ -3000,7 +3012,7 @@
       showNotification('Generating PDF...', 'info');
       
       try {
-        const { jsPDF } = window.jsPDF;
+  const { jsPDF } = window.jspdf;
         const doc = new jsPDF('landscape', 'mm', 'a4');
         
         let currentTabIndex = Array.from(document.querySelectorAll('.tab')).findIndex(t => t.classList.contains('selected'));
@@ -3451,28 +3463,35 @@
       let materialBreakdown = {};
       
       currentBoards.forEach(boardKey => {
-        let sheets = currentSheets[boardKey] || [];
-        let size = boardSizes[boardKey];
-        
+        const sheets = currentSheets[boardKey] || [];
+        const size = boardSizes[boardKey];
         if (size && size.length && size.width) {
-          let boardArea = size.length * size.width;
+          const boardArea = size.length * size.width;
           totalBoards += sheets.length;
-          
+
+          let materialUsed = 0;
+          let materialWaste = 0;
+          let materialParts = 0;
+
           sheets.forEach(sheet => {
             let sheetUsed = 0;
             sheet.forEach(part => {
               sheetUsed += part.l * part.w;
-              totalParts++;
+              materialParts++;
             });
-            totalUsed += sheetUsed;
-            totalWaste += boardArea - sheetUsed;
+            materialUsed += sheetUsed;
+            materialWaste += boardArea - sheetUsed;
           });
-          
+
+          totalParts += materialParts;
+          totalUsed += materialUsed;
+          totalWaste += materialWaste;
+
           materialBreakdown[boardKey] = {
             sheets: sheets.length,
-            boardArea: boardArea,
-            totalUsed: totalUsed,
-            utilization: totalUsed / (boardArea * sheets.length) * 100
+            boardArea,
+            totalUsed: materialUsed,
+            utilization: sheets.length ? (materialUsed / (boardArea * sheets.length) * 100) : 0
           };
         }
       });
