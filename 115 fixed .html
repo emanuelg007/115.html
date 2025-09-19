@@ -1307,6 +1307,9 @@
     let currentBoards = [];
     let currentGroups = {};
   let currentSheets = {};
+  // UID mapping for components
+  let uidToLocation = {}; // uid -> { boardKey, page, pi }
+  let selectedPartUid = null;
   let currentSheetPage = {};
     let originalParts = [];
   let partPlacementMap = {};
@@ -1912,11 +1915,15 @@
           currentSheets[boardKey] = sheets;
           currentSheetPage[boardKey] = 0;
           
-          // Build placement map
+          // Build placement map and UID map
           let placement = {};
           sheets.forEach((sheet, pageIdx) => {
             sheet.forEach((p, pi) => {
               placement[`${p.idx}_${p.instance||0}`] = {page: pageIdx, pi: pi};
+              // Assign stable UID and store mapping
+              const uid = `${boardKey}::${pageIdx}::${pi}`;
+              p.uid = uid;
+              uidToLocation[uid] = { boardKey, page: pageIdx, pi };
             });
           });
           partPlacementMap[boardKey] = placement;
@@ -2135,12 +2142,13 @@
         let nameFont = Math.round(baseNameFont);
         let dimFont = Math.round(nameFont * 0.8);
         
-        html += `<g class="part-group" data-part-index="${n}">
+  const uid = p.uid || `${key}::${page}::${n}`;
+  html += `<g class="part-group" data-part-index="${n}" data-uid="${uid}">
           <rect x="${PAD + p.x*scale}" y="${PAD + p.y*scale}" 
                 width="${p.l*scale}" height="${p.w*scale}" 
                 fill="${fillCol}" stroke="${strokeCol}" stroke-width="2" 
                 cursor="pointer" filter="url(#shadow)" rx="2"
-                onclick="window.highlightComponent('${key}',${page},${n})"
+    onclick="window.showPopupByUid('${uid}')"
                 data-svg-part="${key}_${page}_${n}"
                 ${printedParts[pKey] ? 'data-printed="true"' : ''}
                 onmouseover="this.style.opacity='0.8'" 
@@ -2211,7 +2219,8 @@
           let pKey = `${key}_${page}_${n}`;
           let isPrinted = printedParts[pKey];
           
-        html += `<div class="side-part-row" data-part-id="${pKey}" onclick="window.highlightComponent('${key}',${page},${n})">
+  const uid = (parts[n] && parts[n].uid) ? parts[n].uid : `${key}::${page}::${n}`;
+  html += `<div class="side-part-row" data-part-id="${pKey}" data-uid="${uid}" onclick="window.selectPartByUid('${uid}')">
             <div class="side-part-info">
               <div class="side-part-name">
                 <span class="status-indicator ${isPrinted ? 'printed' : 'pending'}"></span>
@@ -2222,8 +2231,8 @@
               ${comp["Quantity"] && parseInt(comp["Quantity"]) > 1 ? 
                 `<div style="font-size: 11px; color: #6b7280;">Qty: ${comp["Quantity"]}</div>` : ''}
             </div>
-            <button class="side-print-btn" 
-                    onclick="window.showComponentPopup('${key}',${page},${n}); event.stopPropagation();">
+      <button class="side-print-btn" 
+        onclick="window.showPopupByUid('${uid}'); event.stopPropagation();">
               🏷️ Label
             </button>
           </div>`;
@@ -2391,12 +2400,13 @@
         </div>
       </div>
       
-      <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+      <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; align-items: center;">
+        <select id="printerTypeSelect" style="padding: 4px 8px; font-size: 14px;">
+          <option value="browser">Generic Printer</option>
+          <option value="zebra" ${zebraPrinter ? '' : 'disabled'}>Zebra ZT230${zebraPrinter ? '' : ' (Not Connected)'}</option>
+        </select>
         <button id="printLabelBtn" class="action-btn" style="background: var(--primary-color);">
-          🖨️ Print Label (Browser)
-        </button>
-        <button id="zebraLabelBtn" class="action-btn" style="background: var(--success-color);" ${!zebraPrinter ? 'disabled' : ''}>
-          ⚡ Zebra Print ${!zebraPrinter ? '(Not Connected)' : ''}
+          🖨️ Print Label
         </button>
         <button id="undoPrintBtn" class="action-btn" style="background: var(--warning-color);">
           ↶ Undo Print Status
@@ -2409,20 +2419,32 @@
       document.getElementById('popup').style.display = "block";
       document.getElementById('overlay').style.display = "block";
       
-      // Browser print handler
+      // Unified print handler (re-fetch latest data from source using indices)
       document.getElementById('printLabelBtn').onclick = function() {
-        printBrowserLabel(comp, boardType, l, w, el1, el2, ew1, ew2, svg);
-        markPartAsPrinted(boardKey, pageIdx, pi);
-      };
-      
-      // Zebra print handler
-      document.getElementById('zebraLabelBtn').onclick = function() {
-        if (!zebraPrinter) {
-          showNotification('Zebra printer not connected', 'error');
+        const sheetsNow = currentSheets[boardKey] || [];
+        const partNow = (sheetsNow[pageIdx] || [])[pi];
+        if (!partNow) {
+          showNotification('Part not found in current sheet data', 'error');
           return;
         }
-        
-        printZebraLabel(comp, boardType, l, w, { el1, el2, ew1, ew2 });
+        const c = partNow.comp || {};
+        const lenNow = parseFloat(c["Length"]) || partNow.l || l;
+        const widNow = parseFloat(c["Width"]) || partNow.w || w;
+        const el1Now = c["Edging Length 1"] || el1;
+        const el2Now = c["Edging Length 2"] || el2;
+        const ew1Now = c["Edging Width 1"] || ew1;
+        const ew2Now = c["Edging Width 2"] || ew2;
+
+        const printerType = document.getElementById('printerTypeSelect').value;
+        if (printerType === 'zebra') {
+          if (!zebraPrinter) {
+            showNotification('Zebra printer not connected', 'error');
+            return;
+          }
+          printZebraLabel(c, boardType, lenNow, widNow, { el1: el1Now, el2: el2Now, ew1: ew1Now, ew2: ew2Now });
+        } else {
+          printBrowserLabel(c, boardType, lenNow, widNow, el1Now, el2Now, ew1Now, ew2Now, svg);
+        }
         markPartAsPrinted(boardKey, pageIdx, pi);
       };
       // Undo print handler
@@ -2451,6 +2473,26 @@
         window.hidePopup();
         showNotification('Print status removed', 'info');
       };
+    };
+
+    // Select/highlight a part by UID and scroll side list into view
+    window.selectPartByUid = function(uid) {
+      const loc = uidToLocation[uid];
+      if (!loc) return;
+      selectedPartUid = uid;
+      window.highlightComponent(loc.boardKey, loc.page, loc.pi);
+      const partId = `${loc.boardKey}_${loc.page}_${loc.pi}`;
+      const sideRow = document.querySelector(`[data-part-id="${partId}"]`);
+      if (sideRow && typeof sideRow.scrollIntoView === 'function') {
+        sideRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    };
+
+    // Open popup based on UID
+    window.showPopupByUid = function(uid) {
+      const loc = uidToLocation[uid];
+      if (!loc) return;
+      window.showComponentPopup(loc.boardKey, loc.page, loc.pi);
     };
 
   function printBrowserLabel(comp, material, length, width, el1, el2, ew1, ew2, svg) {
@@ -2882,35 +2924,54 @@
     window.printAllSheets = function() {
       let currentTabIndex = Array.from(document.querySelectorAll('.tab')).findIndex(t => t.classList.contains('selected'));
       if (currentTabIndex < 0) return;
-      
       let key = currentBoards[currentTabIndex];
       let sheets = currentSheets[key];
       let BL = (boardSizes[key] && boardSizes[key].length) ? boardSizes[key].length : null;
       let BW = (boardSizes[key] && boardSizes[key].width) ? boardSizes[key].width : null;
-      
       if (!sheets || !BL || !BW) {
         showNotification('Cannot print: Invalid board configuration', 'error');
         return;
       }
-      
       showNotification('Preparing print pages...', 'info');
-      
       let PAD = 60;
       let scale = Math.min((900 - PAD * 2) / BL, (700 - PAD * 2) / BW);
       let pagesHTML = "";
-      
       sheets.forEach((parts, page) => {
         pagesHTML += generatePrintPage(key, page, parts, BL, BW, scale, PAD);
       });
-      
       let holder = document.getElementById('printPagesHolder');
       holder.innerHTML = pagesHTML;
       holder.style.display = "block";
-      
+      // Unified print handler for all sheets
+      const printerTypeSelect = document.getElementById('printerTypeSelect');
+      const printerType = printerTypeSelect ? printerTypeSelect.value : 'browser';
       setTimeout(() => {
-        window.print();
-        holder.style.display = "none";
-        showNotification('Print dialog opened', 'success');
+        if (printerType === 'zebra') {
+          if (!zebraPrinter) {
+            showNotification('Zebra printer not connected', 'error');
+            holder.style.display = "none";
+            return;
+          }
+          // Print each page as ZPL (simulate, as batch ZPL not implemented)
+          sheets.forEach((parts, page) => {
+            // Placeholder: print first part of each page as a label
+            if (parts.length > 0) {
+              const p = parts[0];
+              const comp = p.comp || {};
+              const el1 = comp["Edging Length 1"] || '';
+              const el2 = comp["Edging Length 2"] || '';
+              const ew1 = comp["Edging Width 1"] || '';
+              const ew2 = comp["Edging Width 2"] || '';
+              printZebraLabel(comp, key, p.l, p.w, { el1, el2, ew1, ew2 });
+            }
+          });
+          holder.style.display = "none";
+          showNotification('Zebra print jobs sent', 'success');
+        } else {
+          window.print();
+          holder.style.display = "none";
+          showNotification('Print dialog opened', 'success');
+        }
       }, 500);
     };
 
