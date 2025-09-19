@@ -2454,44 +2454,74 @@
     };
 
   function printBrowserLabel(comp, material, length, width, el1, el2, ew1, ew2, svg) {
-      // Create temporary print element
-      const printDiv = document.createElement('div');
-      printDiv.style.cssText = `
-        position: fixed; top: -9999px; left: -9999px;
-        width: 4in; height: 2in; padding: 8mm;
-        background: white; color: black;
-        font-family: Arial, sans-serif;
-        border: 2px solid black;
-      `;
-      
-      printDiv.innerHTML = `
-        <div style="text-align: center; font-size: ${appSettings.labelFontSize}px; font-weight: ${appSettings.labelBold ? 'bold' : 'normal'}; margin-bottom: 8px;">
-          ${escapeHtml(comp["Name"])}
-        </div>
-        <div style="text-align: center; margin-bottom: 8px;">${svg}</div>
-        <div style="font-size: 14px; margin-bottom: 6px;"><strong>${length} × ${width} mm</strong></div>
-        <div style="font-size: 12px; margin-bottom: 4px;">${escapeHtml(material)}</div>
-        <div style="font-size: 11px;">
-          ${el1 || el2 || ew1 || ew2 ? `Edge: L1:${escapeHtml(el1||'')} L2:${escapeHtml(el2||'')} W1:${escapeHtml(ew1||'')} W2:${escapeHtml(ew2||'')}` : 'No edging'}
-        </div>
-        ${(comp["Notes 1"] || comp["Notes 2"]) ? `
-          <div style="font-size: 11px; margin-top: 6px;">
-            ${comp["Notes 1"] ? `<div><strong>Note 1:</strong> ${escapeHtml(comp["Notes 1"])}</div>` : ''}
-            ${comp["Notes 2"] ? `<div><strong>Note 2:</strong> ${escapeHtml(comp["Notes 2"])}</div>` : ''}
-          </div>
-        ` : ''}
-      `;
-      
-      document.body.appendChild(printDiv);
-      
-      // Print using browser dialog
-      window.print();
-      
-      setTimeout(() => {
-        document.body.removeChild(printDiv);
-      }, 1000);
-      
-      showNotification('Label sent to printer', 'success');
+      // Open a dedicated print-only window so the preview contains only the label
+      const w = window.open('', '_blank', 'noopener,noreferrer,width=900,height=700');
+      if (!w) {
+        showNotification('Popup blocked: enable popups to print the label', 'error');
+        return;
+      }
+
+      // Determine label size in inches from settings
+      let size = (appSettings.labelSize || '4x2').toLowerCase();
+      let labelWIn = 4, labelHIn = 2;
+      if (size === '4x3') { labelWIn = 4; labelHIn = 3; }
+      else if (size === '4x6') { labelWIn = 4; labelHIn = 6; }
+
+      const labelMarginMm = Number(appSettings.labelMargin) || 6;
+      const titleFontPx = Number(appSettings.labelFontSize) || 18;
+      const titleWeight = appSettings.labelBold ? '700' : '400';
+
+      const notesHtml = (comp["Notes 1"] || comp["Notes 2"]) ? (
+        '<div class="notes">' +
+        (comp["Notes 1"] ? `<div><strong>Note 1:</strong> ${escapeHtml(comp["Notes 1"])}</div>` : '') +
+        (comp["Notes 2"] ? `<div><strong>Note 2:</strong> ${escapeHtml(comp["Notes 2"])}</div>` : '') +
+        '</div>'
+      ) : '';
+
+      const edgesText = (el1 || el2 || ew1 || ew2)
+        ? `Edge: L1:${escapeHtml(el1||'')} L2:${escapeHtml(el2||'')} W1:${escapeHtml(ew1||'')} W2:${escapeHtml(ew2||'')}`
+        : 'No edging';
+
+      const html = '<!DOCTYPE html>' +
+        '<html>' +
+          '<head>' +
+            '<meta charset="utf-8" />' +
+            '<title>Label - ' + escapeHtml(comp["Name"] || '') + '</title>' +
+            '<style>' +
+              '@page { size: ' + labelWIn + 'in ' + labelHIn + 'in; margin: 0; }' +
+              'html, body { height: 100%; }' +
+              'body { margin: 0; font-family: Arial, sans-serif; }' +
+              '.label { box-sizing: border-box; width: ' + labelWIn + 'in; height: ' + labelHIn + 'in; padding: ' + labelMarginMm + 'mm; background: #ffffff; color: #000; border: 2px solid #000; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }' +
+              '.title { text-align: center; font-size: ' + titleFontPx + 'px; font-weight: ' + titleWeight + '; margin-bottom: 8px; }' +
+              '.center { text-align: center; }' +
+              '.dim { font-size: 14px; margin-bottom: 6px; font-weight: 700; }' +
+              '.material { font-size: 12px; margin-bottom: 4px; }' +
+              '.edge { font-size: 11px; }' +
+              '.notes { font-size: 11px; margin-top: 6px; width: 100%; }' +
+              '.notes div { margin-top: 2px; }' +
+              '.preview { margin-bottom: 8px; }' +
+              '.preview svg { max-width: 100%; height: auto; }' +
+              '@media print { .label { page-break-after: always; } }' +
+            '</style>' +
+          '</head>' +
+          '<body>' +
+            '<div class="label">' +
+              '<div class="title">' + escapeHtml(comp["Name"] || '') + '</div>' +
+              '<div class="center preview">' + svg + '</div>' +
+              '<div class="dim"><strong>' + length + ' × ' + width + ' mm</strong></div>' +
+              '<div class="material">' + escapeHtml(material || '') + '</div>' +
+              '<div class="edge">' + edgesText + '</div>' +
+              notesHtml +
+            '</div>' +
+            '<script>window.addEventListener("load",function(){setTimeout(function(){try{window.print();}finally{window.close();}},50);});</scr' + 'ipt>' +
+          '</body>' +
+        '</html>';
+
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+
+      showNotification('Opening label print dialog...', 'success');
     }
 
   function printZebraLabel(comp, material, length, width, edging) {
